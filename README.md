@@ -76,4 +76,5 @@ This is a wrapper application. Neuro Karaoke content and branding belong to thei
 ## Credits
 
 Built with [Electron](https://www.electronjs.org/)
+
 Original website: [Neuro-Karaoke](https://neurokaraoke.com)
