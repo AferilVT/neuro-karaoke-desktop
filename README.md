@@ -10,7 +10,37 @@ A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) bu
 -  Clean UI without menu bars
 -  Cross-platform (Windows, macOS, Linux)
 
-## Quick Start
+## Installation
+
+### Windows
+
+1. **Download the installer** from the [Releases](https://github.com/YOUR_USERNAME/neuro-karaoke-desktop/releases) page
+2. Download `Neuro.Karaoke.Setup.exe`
+3. **Run the installer**
+4. Follow the installation wizard
+5. Launch "Neuro Karaoke" from your Start Menu or Desktop shortcut
+
+### Linux
+
+1. **Download the AppImage** from the [Releases](https://github.com/YOUR_USERNAME/neuro-karaoke-desktop/releases) page
+2. Download `Neuro-Karaoke-1.0.0.AppImage`
+3. **Make it executable**:
+   ```bash
+   chmod +x Neuro-Karaoke-1.0.0.AppImage
+   ```
+4. **Run the app**:
+   ```bash
+   ./Neuro-Karaoke-1.0.0.AppImage
+   ```
+
+### macOS
+
+1. **Download the DMG** from the [Releases](https://github.com/YOUR_USERNAME/neuro-karaoke-desktop/releases) page
+2. Open the DMG file
+3. Drag "Neuro Karaoke" to your Applications folder
+4. Launch from Applications
+
+## Quick Start (Development)
 
 ### Install Dependencies
 
