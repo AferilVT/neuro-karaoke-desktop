@@ -14,7 +14,7 @@ A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) bu
 
 ### Windows
 
-1. **Download the installer** from the [Releases](https://github.com/YOUR_USERNAME/neuro-karaoke-desktop/releases) page
+1. **Download the installer** from the [Releases](https://github.com/AferilVT/neuro-karaoke-desktop/releases) page
 2. Download `Neuro.Karaoke.Setup.exe`
 3. **Run the installer**
 4. Follow the installation wizard
