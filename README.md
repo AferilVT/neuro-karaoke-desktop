@@ -4,11 +4,11 @@ A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) bu
 
 ## Features
 
-- 🎤 Full Neuro Karaoke website in a native desktop window
-- 🔐 Discord login works seamlessly
-- 💾 Persistent login sessions (stays logged in)
-- 🎨 Clean UI without menu bars
-- 🖥️ Cross-platform (Windows, macOS, Linux)
+-  Full Neuro Karaoke website in a native desktop window
+-  Discord login works seamlessly
+-  Persistent login sessions (stays logged in)
+-  Clean UI without menu bars
+-  Cross-platform (Windows, macOS, Linux)
 
 ## Quick Start
 
@@ -76,3 +76,4 @@ This is a wrapper application. Neuro Karaoke content and branding belong to thei
 ## Credits
 
 Built with [Electron](https://www.electronjs.org/)
+Original website: [Neuro-Karaoke](https://neurokaraoke.com)
