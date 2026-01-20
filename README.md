@@ -35,10 +35,7 @@ A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) bu
 
 ### macOS
 
-1. **Download the DMG** from the [Releases](https://github.com/YOUR_USERNAME/neuro-karaoke-desktop/releases) page
-2. Open the DMG file
-3. Drag "Neuro Karaoke" to your Applications folder
-4. Launch from Applications
+Still in works... (I don't own a mac device to compile it)
 
 ## Quick Start (Development)
 
