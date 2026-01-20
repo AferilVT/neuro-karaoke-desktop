@@ -12,7 +12,6 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      // Use persistent session to save login state
       partition: 'persist:neurokaraoke'
     },
     backgroundColor: '#1a1a1a',
@@ -20,12 +19,10 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
   });
 
-  // Load the Neuro Karaoke website
+
   mainWindow.loadURL('https://www.neurokaraoke.com');
 
-  // Open DevTools in development mode
-  // mainWindow.webContents.openDevTools();
-
+// Open DevTools
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
