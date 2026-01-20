@@ -32,7 +32,7 @@ The app will open and load the Neuro Karaoke website.
    ```
 
 3. Find the installer in the `dist` folder:
-   - `Neuro Karaoke Setup X.X.X.exe` - Installer
+   - `Neuro Karaoke Setup.exe` - Installer
    - You can distribute this file to other Windows users
 
 ## Building for Other Platforms
