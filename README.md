@@ -1,4 +1,4 @@
-# Neuro Karaoke Desktop
+# Neuro Karaoke Wrapper
 
 A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) built with Electron.
 
