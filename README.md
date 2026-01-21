@@ -35,7 +35,7 @@ A simple desktop wrapper for [neurokaraoke.com](https://www.neurokaraoke.com) bu
 
 ### macOS
 
-Still in works... (I don't own a mac device to compile it)
+Still in works... (I don't own a mac device to compile it. Need contributions)
 
 ## Quick Start (Development)
 
