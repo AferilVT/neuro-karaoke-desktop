@@ -32,15 +32,15 @@ jobs:
 
       - name: Build macOS
         if: runner.os == 'macOS'
-        run: yarn build:mac
+        run: yarn build:mac --publish=never
 
       - name: Build Windows
         if: runner.os == 'Windows'
-        run: yarn build:win
+        run: yarn build:win --publish=never
 
       - name: Build Linux
         if: runner.os == 'Linux'
-        run: yarn build:linux
+        run: yarn build:linux --publish=never
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
