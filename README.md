@@ -9,7 +9,7 @@ All Credits go to the Website Creator "Soul". This is just a desktop version of 
 - **Media Key Support**: Control playback with your keyboard's media keys
 - **Always on Top**: Pin the window above other applications
 - **Song Title Detection**: Shows current song in window title and tray tooltip
-- Discord Rich Presence
+- **Discord Rich Presence**: Shows your current song as a Activity in discord (Requires login with discord)
   
 ## Installation
 
