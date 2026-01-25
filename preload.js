@@ -496,6 +496,152 @@ class SongDurationDetector {
 }
 
 /**
+ * Manages navigator.mediaSession API for OS media controls integration
+ */
+class MediaSessionManager {
+  constructor() {
+    this.currentTitle = '';
+    this.currentArtist = '';
+    this.currentArtwork = '';
+    this.isPlaying = false;
+  }
+
+  init() {
+    if (!('mediaSession' in navigator)) {
+      console.warn('MediaSession API not supported');
+      return;
+    }
+
+    // Set up action handlers for media keys
+    const actions = [
+      ['play', () => this.triggerPlayPause()],
+      ['pause', () => this.triggerPlayPause()],
+      ['previoustrack', () => this.triggerPrevious()],
+      ['nexttrack', () => this.triggerNext()],
+      ['seekbackward', (details) => this.triggerSeek(-10)],
+      ['seekforward', (details) => this.triggerSeek(10)],
+    ];
+
+    for (const [action, handler] of actions) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+        console.log(`✓ MediaSession: registered ${action} handler`);
+      } catch (error) {
+        console.warn(`MediaSession: ${action} not supported`, error);
+      }
+    }
+
+    console.log('✓ MediaSession API initialized');
+  }
+
+  triggerPlayPause() {
+    // Try clicking the play/pause button
+    const playButton = document.querySelector(
+      '[aria-label*="play" i], [aria-label*="pause" i], .play-button, .pause-button'
+    );
+    if (playButton) {
+      playButton.click();
+      console.log('MediaSession: triggered play/pause');
+      return;
+    }
+
+    // Fallback: toggle media element directly
+    const media = document.querySelector('audio, video');
+    if (media) {
+      if (media.paused) {
+        media.play();
+      } else {
+        media.pause();
+      }
+      console.log('MediaSession: toggled media element');
+    }
+  }
+
+  triggerNext() {
+    const nextButton = document.querySelector('[aria-label*="next" i], .next-button');
+    if (nextButton) {
+      nextButton.click();
+      console.log('MediaSession: triggered next track');
+    }
+  }
+
+  triggerPrevious() {
+    const prevButton = document.querySelector('[aria-label*="previous" i], .prev-button');
+    if (prevButton) {
+      prevButton.click();
+      console.log('MediaSession: triggered previous track');
+    }
+  }
+
+  triggerSeek(offsetSeconds) {
+    const media = document.querySelector('audio, video');
+    if (media && Number.isFinite(media.currentTime)) {
+      media.currentTime = Math.max(0, media.currentTime + offsetSeconds);
+      console.log(`MediaSession: seeked ${offsetSeconds}s`);
+    }
+  }
+
+  updateMetadata(title, artist, artwork) {
+    if (!('mediaSession' in navigator)) return;
+
+    // Only update if something changed
+    if (title === this.currentTitle && artist === this.currentArtist && artwork === this.currentArtwork) {
+      return;
+    }
+
+    this.currentTitle = title || '';
+    this.currentArtist = artist || '';
+    this.currentArtwork = artwork || '';
+
+    const metadata = {
+      title: this.currentTitle || 'Neuro Karaoke',
+      artist: this.currentArtist || 'Neuro',
+      album: 'Neuro Karaoke',
+    };
+
+    // Add artwork if available
+    if (this.currentArtwork) {
+      metadata.artwork = [
+        { src: this.currentArtwork, sizes: '512x512', type: 'image/png' },
+        { src: this.currentArtwork, sizes: '256x256', type: 'image/png' },
+        { src: this.currentArtwork, sizes: '128x128', type: 'image/png' },
+      ];
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata(metadata);
+      console.log('✓ MediaSession metadata updated:', metadata.title, '-', metadata.artist);
+    } catch (error) {
+      console.error('Failed to set MediaSession metadata:', error);
+    }
+  }
+
+  updatePlaybackState(playing) {
+    if (!('mediaSession' in navigator)) return;
+
+    this.isPlaying = playing;
+    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+    console.log('MediaSession playback state:', playing ? 'playing' : 'paused');
+  }
+
+  updatePositionState(duration, position) {
+    if (!('mediaSession' in navigator)) return;
+
+    try {
+      if (duration > 0) {
+        navigator.mediaSession.setPositionState({
+          duration: duration,
+          position: Math.min(position || 0, duration),
+          playbackRate: 1.0,
+        });
+      }
+    } catch (error) {
+      // Position state may not be supported on all platforms
+    }
+  }
+}
+
+/**
  * Main song detection manager
  */
 class SongDetectionManager {
@@ -503,9 +649,11 @@ class SongDetectionManager {
     this.titleDetector = new SongTitleDetector();
     this.playbackDetector = new PlaybackStateDetector();
     this.durationDetector = new SongDurationDetector();
+    this.mediaSessionManager = new MediaSessionManager();
     this.boundMedia = null;
     this.onMediaPlay = null;
     this.onMediaPause = null;
+    this.lastArtwork = '';
   }
 
   detectAll() {
@@ -525,6 +673,13 @@ class SongDetectionManager {
       this.durationDetector.reset(); // Reset duration for new song
       ipcRenderer.send('update-song', songInfo);
 
+      // Update MediaSession with new song info
+      this.mediaSessionManager.updateMetadata(
+        songInfo.title,
+        songInfo.artist,
+        this.lastArtwork
+      );
+
       // Immediately check playback and duration for new song
       this.playbackDetector.detect();
       this.durationDetector.detect();
@@ -532,6 +687,8 @@ class SongDetectionManager {
 
     if (playbackState !== null) {
       ipcRenderer.send('playback-state', playbackState);
+      // Update MediaSession playback state
+      this.mediaSessionManager.updatePlaybackState(playbackState);
     }
 
     if (duration !== null) {
@@ -540,10 +697,24 @@ class SongDetectionManager {
 
     if (elapsed !== null) {
       ipcRenderer.send('song-elapsed', elapsed);
+      // Update MediaSession position
+      const currentDuration = this.durationDetector.lastDuration;
+      if (currentDuration) {
+        this.mediaSessionManager.updatePositionState(currentDuration, elapsed);
+      }
     }
 
     if (imageUrl !== null) {
       ipcRenderer.send('album-art', imageUrl);
+      // Update MediaSession artwork
+      if (imageUrl !== this.lastArtwork) {
+        this.lastArtwork = imageUrl;
+        this.mediaSessionManager.updateMetadata(
+          this.titleDetector.lastTitle,
+          this.titleDetector.lastArtist,
+          imageUrl
+        );
+      }
     }
   }
 
@@ -561,6 +732,7 @@ class SongDetectionManager {
     const state = this.playbackDetector.detect();
     if (state !== null) {
       ipcRenderer.send('playback-state', state);
+      this.mediaSessionManager.updatePlaybackState(state);
     }
   }
 
@@ -583,8 +755,14 @@ class SongDetectionManager {
     }
 
     this.boundMedia = media;
-    this.onMediaPlay = () => ipcRenderer.send('playback-state', true);
-    this.onMediaPause = () => ipcRenderer.send('playback-state', false);
+    this.onMediaPlay = () => {
+      ipcRenderer.send('playback-state', true);
+      this.mediaSessionManager.updatePlaybackState(true);
+    };
+    this.onMediaPause = () => {
+      ipcRenderer.send('playback-state', false);
+      this.mediaSessionManager.updatePlaybackState(false);
+    };
     media.addEventListener('play', this.onMediaPlay);
     media.addEventListener('playing', this.onMediaPlay);
     media.addEventListener('pause', this.onMediaPause);
@@ -597,6 +775,9 @@ window.addEventListener('DOMContentLoaded', () => {
   console.log('Neuro Karaoke wrapper loaded');
 
   const manager = new SongDetectionManager();
+
+  // Initialize MediaSession API for hardware media key support
+  manager.mediaSessionManager.init();
 
   // Setup MutationObserver to watch for DOM changes
   const observer = new MutationObserver(() => {
