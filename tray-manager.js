@@ -1,4 +1,4 @@
-const { Tray, Menu, app } = require('electron');
+const { Tray, Menu, app, nativeImage } = require('electron');
 
 /**
  * Manages system tray icon and menu
@@ -15,7 +15,7 @@ class TrayManager {
    */
   create(mainWindow, onQuit) {
     this.mainWindow = mainWindow;
-    this.tray = new Tray(this.iconPath);
+    this.tray = new Tray(this.getTrayIcon());
     this.tray.setToolTip('Neuro Karaoke');
 
     const contextMenu = Menu.buildFromTemplate([
@@ -38,6 +38,28 @@ class TrayManager {
     this.tray.on('double-click', () => this.showWindow());
 
     return this.tray;
+  }
+
+  /**
+   * Build a tray icon that renders correctly in the macOS menu bar.
+   */
+  getTrayIcon() {
+    const icon = nativeImage.createFromPath(this.iconPath);
+    if (icon.isEmpty()) {
+      return this.iconPath;
+    }
+
+    if (process.platform === 'darwin') {
+      const targetSize = 16;
+      const size = icon.getSize();
+      const resized = (size.width !== targetSize || size.height !== targetSize)
+        ? icon.resize({ width: targetSize, height: targetSize })
+        : icon;
+      resized.setTemplateImage(true);
+      return resized;
+    }
+
+    return icon;
   }
 
   /**
