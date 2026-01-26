@@ -14,7 +14,7 @@ All Credits go to the Website Creator "Soul". This is just a desktop version of 
 
 ### Windows
 
-Download and run `Neuro.Karaoke.Player.Setup.exe` from the [latest release](../../releases/latest).
+Download and run `Neuro.Karaoke.Setup.exe` from the [latest release](../../releases/latest).
 
 ### macOS
 
