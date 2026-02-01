@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+
+# Signing keys - NEVER commit these
+*.jks
+*.keystore
+
+# Release APKs
+/app/release/
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
