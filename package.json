@@ -1,0 +1,95 @@
+{
+  "name": "neuro-karaoke-player",
+  "productName": "Neuro Karaoke Player",
+  "version": "1.0.0",
+  "description": "Desktop wrapper for neurokaraoke.com with media controls and tray support",
+  "homepage": "https://example.com",
+  "main": "main.js",
+  "author": {
+    "name": "aferil",
+    "email": "example@example.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:linux:docker": "bash scripts/build-linux-docker.sh",
+    "build:mac": "electron-builder --mac"
+  },
+  "keywords": [
+    "karaoke",
+    "neuro",
+    "desktop",
+    "electron"
+  ],
+  "devDependencies": {
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0"
+  },
+  "build": {
+    "appId": "com.neurokaraoke.app",
+    "productName": "Neuro Karaoke Player",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.js",
+      "discord-manager.js",
+      "tray-manager.js",
+      "neurokaraoke-api.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/neurokaraoke.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Neuro Karaoke Player",
+      "menuCategory": "NeuroSama"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "icon": "assets/neurokaraoke.png",
+      "category": "AudioVideo"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/neurokaraoke.png",
+      "category": "public.app-category.music"
+    }
+  },
+  "dependencies": {
+    "discord-rpc": "^4.0.1"
+  }
+}

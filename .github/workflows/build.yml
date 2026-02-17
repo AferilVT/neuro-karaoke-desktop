@@ -1,0 +1,49 @@
+name: build
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: yarn build:mac --publish=never
+
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: yarn build:win --publish=never
+
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        run: yarn build:linux --publish=never
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ runner.os }}
+          path: dist/**
