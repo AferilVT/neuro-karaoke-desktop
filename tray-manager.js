@@ -31,11 +31,14 @@ class TrayManager {
 
     this.rebuildMenu();
 
-    // Single click to toggle window visibility (Windows style)
-    this.tray.on('click', () => this.toggleWindow());
-
-    // Double click to show and focus
-    this.tray.on('double-click', () => this.showWindow());
+    // On macOS, setContextMenu() already opens the menu on every click, so
+    // attaching a click handler too would toggle the window at the same time
+    // as the menu opens — causing the black-screen issue. Use the Open menu
+    // item instead. On Windows/Linux, single click toggles the window.
+    if (process.platform !== 'darwin') {
+      this.tray.on('click', () => this.toggleWindow());
+      this.tray.on('double-click', () => this.showWindow());
+    }
 
     return this.tray;
   }
@@ -244,11 +247,6 @@ class TrayManager {
     }
     this.mainWindow.show();
     this.mainWindow.focus();
-    // On macOS the GPU compositor can fail to repaint after hide/show,
-    // leaving a black screen. Invalidating forces a repaint.
-    if (process.platform === 'darwin') {
-      this.mainWindow.webContents.invalidate();
-    }
   }
 
   /**
