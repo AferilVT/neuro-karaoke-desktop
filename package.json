@@ -1,7 +1,7 @@
 {
   "name": "neuro-karaoke-player",
   "productName": "Neuro Karaoke Player",
-  "version": "1.0.0",
+  "version": "1.3alpha",
   "description": "Desktop wrapper for neurokaraoke.com with media controls and tray support",
   "homepage": "https://example.com",
   "main": "main.js",
