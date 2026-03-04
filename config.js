@@ -17,8 +17,14 @@ module.exports = {
 
   // URLs
   URL: {
-    SITE: 'https://www.neurokaraoke.com/',
-    ALLOWED_HOSTS: ['https://www.neurokaraoke.com', 'https://neurokaraoke.com']
+    NEURO: 'https://www.neurokaraoke.com/',
+    EVIL: 'https://www.evilkaraoke.com/',
+    SMOCUS: 'https://www.twinskaraoke.com/',
+    ALLOWED_HOSTS: [
+      'https://www.neurokaraoke.com', 'https://neurokaraoke.com',
+      'https://www.evilkaraoke.com', 'https://evilkaraoke.com',
+      'https://www.twinskaraoke.com', 'https://twinskaraoke.com'
+    ]
   },
 
   // App metadata

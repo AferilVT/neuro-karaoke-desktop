@@ -64,9 +64,14 @@ class NeuroKaraokeAPI {
         .toLowerCase()
         .normalize('NFKD')
         .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[’'".,!?()[\]{}:;/-]/g, ' ')
+        .replace(/[''".,!?()[\]{}:;/-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+    };
+
+    const toStr = (value) => {
+      if (Array.isArray(value)) return value.join(', ');
+      return value || '';
     };
 
     const titleNorm = normalize(title);
@@ -80,8 +85,8 @@ class NeuroKaraokeAPI {
 
       const songTitle = song.title;
       const songTitleNorm = normalize(songTitle);
-      const coverArtistsNorm = normalize(song.coverArtists || '');
-      const originalArtistsNorm = normalize(song.originalArtists || '');
+      const coverArtistsNorm = normalize(toStr(song.coverArtists));
+      const originalArtistsNorm = normalize(toStr(song.originalArtists));
 
       let score = 0;
       if (title && songTitle.toLowerCase() === title.toLowerCase()) score += 3;
@@ -101,20 +106,21 @@ class NeuroKaraokeAPI {
       }
     }
 
-    return bestScore > 0 ? bestSong : null;
+    return bestScore >= 3 ? bestSong : null;
   }
 
   /**
-   * Get cover art URL from audio URL
+   * Get cover art URL from audio path
    */
-  getCoverArtUrl(audioUrl) {
-    if (!audioUrl) return null;
+  getCoverArtUrl(audioPath) {
+    if (!audioPath) return null;
 
-    // Try to convert audio URL to image URL
-    // Example: https://storage.neurokaraoke.com/audio/FEX%20-%20Subways%20of%20Your%20Mind%20-%20Evil.v1%29.mp3
-    // Convert to: https://storage.neurokaraoke.com/images/FEX%20-%20Subways%20of%20Your%20Mind%20-%20Evil.jpg
+    // Handle relative paths from the songs API (absolutePath field)
+    const fullUrl = audioPath.startsWith('http')
+      ? audioPath
+      : `https://storage.neurokaraoke.com/${audioPath}`;
 
-    const imageUrl = audioUrl
+    const imageUrl = fullUrl
       .replace('/audio/', '/images/')
       .replace(/\.v\d+\)?\.mp3$/, '.jpg')
       .replace(/\.mp3$/, '.jpg');
@@ -136,46 +142,41 @@ class NeuroKaraokeAPI {
 
         const artCredit =
           song.artCredit ||
-          song.art_credit ||
           song.artCreditText ||
-          song.art_credit_text ||
           song.coverArtCredit ||
-          song.cover_art_credit ||
-          song.coverArtBy ||
-          song.cover_art_by ||
-          song.albumArtCredit ||
-          song.album_art_credit ||
           song.artBy ||
-          song.art_by ||
           song.artCreator ||
-          song.art_creator ||
           playlistArtCredit ||
           null;
 
-        if (!artCredit) {
-          console.log('No art credit field found for song. Available keys:', Object.keys(song));
-        }
+        const audioPath = song.audioUrl || song.absolutePath || null;
 
         const coverArtUrl =
           song.coverArt ||
-          song.cover_art ||
           song.coverArtUrl ||
-          song.cover_art_url ||
-          this.getCoverArtUrl(song.audioUrl) ||
+          this.getCoverArtUrl(audioPath) ||
           playlistCover ||
           null;
 
+        const coverArtist = Array.isArray(song.coverArtists)
+          ? song.coverArtists.join(', ')
+          : (song.coverArtists || null);
+
+        const originalArtist = Array.isArray(song.originalArtists)
+          ? song.originalArtists.join(', ')
+          : (song.originalArtists || null);
+
         return {
+          songId: song.id || song.songId || null,
           title: song.title,
-          originalArtist: song.originalArtists,
-          coverArtist: song.coverArtists,
-          artCredit, // Album art creator
-          audioUrl: song.audioUrl,
+          originalArtist,
+          coverArtist,
+          artCredit,
+          audioUrl: audioPath,
           coverArtUrl
         };
       }
 
-      console.log('No matching song found in playlist for:', title, '-', artist || 'Unknown');
       return null;
     } catch (error) {
       console.error('Failed to fetch song metadata:', error);

@@ -32,12 +32,10 @@ class DiscordManager {
    */
   async init() {
     try {
-      console.log('Initializing Discord RPC with Client ID:', this.clientId);
       DiscordRPC.register(this.clientId);
       this.client = new DiscordRPC.Client({ transport: 'ipc' });
 
       this.client.on('ready', () => {
-        console.log('✓ Discord RPC connected successfully!');
         this.updatePresence();
       });
 
@@ -46,7 +44,6 @@ class DiscordManager {
       });
 
       await this.client.login({ clientId: this.clientId });
-      console.log('Discord RPC login completed');
     } catch (error) {
       console.error('❌ Failed to initialize Discord RPC:', error);
       console.error('Make sure Discord desktop app is running!');
@@ -68,6 +65,7 @@ class DiscordManager {
       this.songStartTime = Date.now();
       this.songElapsed = 0;
       this.pausedElapsed = 0;
+      this.songUrl = null; // Reset so we don't show previous song's link
       this.albumArtUrl = null; // Reset album art for new song
       this.albumArtText = null; // Reset album art credit
       this.albumArtCredit = null;
@@ -76,7 +74,6 @@ class DiscordManager {
         clearTimeout(this.pendingPresenceTimer);
         this.pendingPresenceTimer = null;
       }
-      console.log('New song detected:', title, artist ? `by ${artist}` : '');
     }
 
     this.updatePresence({ force: true });
@@ -89,22 +86,17 @@ class DiscordManager {
     const wasPlaying = this.isPlaying;
     this.isPlaying = playing;
 
-    console.log('Playback state:', playing ? '▶ Playing' : '⏸ Paused');
-
     if (playing && !wasPlaying) {
       // Resuming playback - elapsed time will update via updateElapsed()
       if (!this.songStartTime) {
         // Starting fresh
         this.songStartTime = Date.now();
-        console.log('Song started at:', new Date(this.songStartTime).toLocaleTimeString());
       }
       if (this.pausedElapsed) {
         this.songStartTime = Date.now() - (this.pausedElapsed * 1000);
       }
-      console.log('Song resumed');
     } else if (!playing && wasPlaying) {
       // Pausing playback
-      console.log('Song paused at', this.songElapsed, 'seconds');
       this.pausedElapsed = this.songElapsed;
     }
 
@@ -115,7 +107,6 @@ class DiscordManager {
    * Update song duration
    */
   updateDuration(durationInSeconds) {
-    console.log('Received song duration:', durationInSeconds, 'seconds');
     this.songDuration = durationInSeconds;
     this.updatePresence({ force: true });
   }
@@ -131,11 +122,6 @@ class DiscordManager {
 
     // Always update Discord when elapsed changes
     if (this.isPlaying) {
-      const remaining = this.songDuration ? Math.max(this.songDuration - elapsedSeconds, 0) : null;
-      console.log(
-        `Syncing Discord time: elapsed=${elapsedSeconds}s` +
-          (this.songDuration ? `, duration=${this.songDuration}s, remaining=${remaining}s` : ', duration=unknown')
-      );
       this.updatePresence();
     }
   }
@@ -145,7 +131,6 @@ class DiscordManager {
    */
   updateAlbumArt(imageUrl, artText = null) {
     if (imageUrl) {
-      console.log('Received album art URL:', imageUrl);
       this.albumArtUrl = imageUrl;
     }
     if (artText) {
@@ -160,7 +145,6 @@ class DiscordManager {
   updateSongUrl(url) {
     if (url && url !== this.songUrl) {
       this.songUrl = url;
-      console.log('Updated song URL for Discord button:', url);
       this.updatePresence({ force: true });
     }
   }
@@ -170,7 +154,6 @@ class DiscordManager {
     const cleaned = credit.replace(/^Art by:\s*/i, '').trim();
     this.albumArtCredit = cleaned;
     this.albumArtText = cleaned;
-    console.log('Received album art credit:', this.albumArtCredit);
     this.updatePresence({ force: true });
   }
 
@@ -179,7 +162,6 @@ class DiscordManager {
    */
   async updatePresence({ force = false } = {}) {
     if (!this.client) {
-      console.log('Discord RPC client not initialized, skipping presence update');
       return;
     }
 
@@ -205,18 +187,10 @@ class DiscordManager {
 
     try {
       if (!this.currentSong || this.currentSong.trim() === '') {
-        console.log('No current song, clearing Discord presence');
         await this.client.clearActivity();
         this.lastPresenceUpdate = Date.now();
         return;
       }
-
-      console.log('Updating Discord presence:', {
-        song: this.currentSong,
-        playing: this.isPlaying,
-        duration: this.songDuration,
-        startTime: this.songStartTime
-      });
 
       const largeImageKey = this.albumArtUrl || 'neurokaraoke';
 
@@ -228,7 +202,6 @@ class DiscordManager {
       const detailsText = this.currentSong;
       const stateText = this.currentArtist || 'Listening';
       
-
       const activity = {
         type: this.activityType,
         details: truncate(detailsText, 128),
@@ -248,11 +221,9 @@ class DiscordManager {
         const startTimestamp = Math.floor(this.songStartTime / 1000);
         activity.startTimestamp = startTimestamp;
         activity.endTimestamp = startTimestamp + this.songDuration;
-        console.log(`Setting synced timestamps: elapsed=${this.songElapsed}s, duration=${this.songDuration}s`);
       } else if (!this.isPlaying) {
         // Discord RPC has no pause state for the progress bar; omit timestamps to prevent countdown.
         activity.state = this.currentArtist ? `${this.currentArtist} · Paused` : 'Paused';
-        console.log('Paused - updating presence without timestamps');
       }
 
       const pid = process.pid;
@@ -282,7 +253,6 @@ class DiscordManager {
         await this.client.setActivity(activity);
       }
       this.lastPresenceUpdate = Date.now();
-      console.log('✓ Discord presence updated successfully');
     } catch (error) {
       console.error('❌ Failed to update Discord presence:', error);
     } finally {

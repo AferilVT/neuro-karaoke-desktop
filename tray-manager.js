@@ -12,14 +12,16 @@ class TrayManager {
     this.sleepTimer = null;
     this.sleepEndTime = null;
     this.sleepTickInterval = null;
+    this.onSwitchSite = null;
   }
 
   /**
    * Create the system tray icon
    */
-  create(mainWindow, onQuit) {
+  create(mainWindow, onQuit, onSwitchSite = null) {
     this.mainWindow = mainWindow;
     this.onQuit = onQuit;
+    this.onSwitchSite = onSwitchSite;
     let icon = this.iconPath;
     if (process.platform === 'darwin') {
       const img = nativeImage.createFromPath(this.iconPath);
@@ -77,6 +79,23 @@ class TrayManager {
         label: sleepActive ? `Sleep Timer (${remainingLabel})` : 'Sleep Timer',
         submenu: sleepSubmenu
       },
+      {
+        label: 'Switch Site',
+        submenu: [
+          {
+            label: 'Neuro',
+            click: () => { this.showWindow(); this.onSwitchSite?.('neuro'); }
+          },
+          {
+            label: 'Evil',
+            click: () => { this.showWindow(); this.onSwitchSite?.('evil'); }
+          },
+          {
+            label: 'Smocus',
+            click: () => { this.showWindow(); this.onSwitchSite?.('smocus'); }
+          }
+        ]
+      },
       { type: 'separator' },
       {
         label: 'Exit',
@@ -94,10 +113,8 @@ class TrayManager {
     this.cancelSleepTimer();
 
     this.sleepEndTime = Date.now() + (minutes * 60 * 1000);
-    console.log(`Sleep timer set for ${minutes} minutes`);
 
     this.sleepTimer = setTimeout(() => {
-      console.log('Sleep timer expired - pausing playback');
       this.pausePlayback();
       this.sleepTimer = null;
       this.sleepEndTime = null;
@@ -121,7 +138,6 @@ class TrayManager {
       clearTimeout(this.sleepTimer);
       this.sleepTimer = null;
       this.sleepEndTime = null;
-      console.log('Sleep timer cancelled');
     }
     this.stopTickInterval();
     this.rebuildMenu();
@@ -231,7 +247,6 @@ class TrayManager {
         var media = document.querySelector('audio, video');
         if (media && !media.paused) {
           media.pause();
-          console.log('Sleep timer: paused playback');
         }
       })();
     `).catch(err => console.error('Sleep timer pause failed:', err));
@@ -242,7 +257,6 @@ class TrayManager {
    */
   showWindow() {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) {
-      console.warn('Cannot show window: window is destroyed');
       return;
     }
     this.mainWindow.show();

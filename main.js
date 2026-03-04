@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, shell, clipboard, nativeImage, Menu, net } = require('electron');
 const path = require('path');
 const config = require('./config');
 const DiscordManager = require('./discord-manager');
@@ -21,6 +21,16 @@ let apiClient = null;
 // Current state
 let currentPlaylistId = null;
 
+// One persistent WebContentsView per site (lazily created)
+const views = {};
+let currentView = null;
+
+const SITE_MAP = {
+  neuro: config.URL.NEURO,
+  evil: config.URL.EVIL,
+  smocus: config.URL.SMOCUS
+};
+
 // Set app ID for Windows taskbar grouping
 app.setAppUserModelId(config.APP.ID);
 
@@ -34,6 +44,151 @@ function getAssetPath(filename) {
   return path.join(process.resourcesPath, 'assets', filename);
 }
 
+// The theme button label each site should have auto-selected on load
+const THEME_LABELS = { neuro: 'NEURO', evil: 'EVIL', smocus: 'SMOCUS' };
+
+/**
+ * After a site loads, programmatically click its matching theme button.
+ * Retries a few times to handle slow Blazor/SPA render times.
+ * event.isTrusted=false on these synthetic clicks, so our preload
+ * listener ignores them and won't trigger another site switch.
+ */
+function autoSelectTheme(view, label) {
+  const safeLabel = JSON.stringify(label);
+  const script = `
+    (function() {
+      const target = ${safeLabel};
+      const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
+      const t = btns.find(b => (b.textContent || '').trim().replace(/\\s+/g, '').toUpperCase() === target);
+      if (t) { t.click(); return true; }
+      return false;
+    })()
+  `;
+  let attempts = 0;
+  const tryClick = () => {
+    if (!view.webContents || view.webContents.isDestroyed()) return;
+    view.webContents.executeJavaScript(script).then(found => {
+      if (!found && attempts++ < 6) setTimeout(tryClick, 1500);
+    }).catch(() => {});
+  };
+  setTimeout(tryClick, 2000); // initial delay for SPA to render
+}
+
+/**
+ * Wire up webContents events for a view
+ */
+function setupViewEvents(view, theme) {
+  view.webContents.setUserAgent(config.APP.USER_AGENT);
+
+  // Block navigation away from allowed hosts
+  const allowedHostnames = new Set([
+    'www.neurokaraoke.com', 'neurokaraoke.com',
+    'www.evilkaraoke.com', 'evilkaraoke.com',
+    'www.twinskaraoke.com', 'twinskaraoke.com'
+  ]);
+
+  const isSafeExternalUrl = (u) => {
+    try {
+      const parsed = new URL(u);
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch { return false; }
+  };
+
+  view.webContents.on('will-navigate', (event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (!allowedHostnames.has(parsed.hostname)) {
+        event.preventDefault();
+        if (isSafeExternalUrl(url)) shell.openExternal(url);
+      }
+    } catch {
+      event.preventDefault();
+    }
+  });
+
+  // Open external links in default browser
+  view.webContents.setWindowOpenHandler(({ url }) => {
+    if (isSafeExternalUrl(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Capture song ID from the playCount API request the Blazor app makes
+  if (theme === 'neuro') {
+    view.webContents.session.webRequest.onCompleted(
+      { urls: ['*://api.neurokaraoke.com/api/songs/playCount/*'] },
+      (details) => {
+        if (details.method !== 'PUT') return;
+        const match = details.url.match(/\/playCount\/([0-9a-f-]{36})$/i);
+        if (match) {
+          const songUrl = `https://www.neurokaraoke.com/song/${match[1]}`;
+          discordManager?.updateSongUrl(songUrl);
+        }
+      }
+    );
+
+    view.webContents.once('did-finish-load', () => {
+      setTimeout(() => checkForUpdates(mainWindow), 3000);
+    });
+  }
+}
+
+/**
+ * Get or lazily create a persistent WebContentsView for the given site
+ */
+function getOrCreateView(theme) {
+  if (views[theme]) return views[theme];
+
+  const view = new WebContentsView({
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      partition: config.APP.PARTITION,
+      preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false
+    }
+  });
+
+  setupViewEvents(view, theme);
+  view.webContents.loadURL(SITE_MAP[theme]);
+
+  // Auto-select the matching theme button once the site has rendered
+  view.webContents.once('did-finish-load', () => {
+    autoSelectTheme(view, THEME_LABELS[theme]);
+  });
+
+  views[theme] = view;
+  return view;
+}
+
+/**
+ * Switch the visible site without reloading — preserves login state
+ */
+function switchToSite(theme) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  const view = getOrCreateView(theme);
+  if (view === currentView) return;
+
+  if (currentView) {
+    // Pause audio, clear cache, and destroy the old view to free RAM
+    currentView.webContents.setAudioMuted(true);
+    currentView.webContents.executeJavaScript(
+      'document.querySelectorAll("audio, video").forEach(m => m.pause())'
+    ).catch(() => {});
+    mainWindow.contentView.removeChildView(currentView);
+    const oldTheme = Object.keys(views).find(k => views[k] === currentView);
+    currentView.webContents.session.clearCache().catch(() => {});
+    currentView.webContents.close();
+    if (oldTheme) delete views[oldTheme];
+  }
+  mainWindow.contentView.addChildView(view);
+  view.webContents.setAudioMuted(false);
+
+  const [width, height] = mainWindow.getContentSize();
+  view.setBounds({ x: 0, y: 0, width, height });
+  currentView = view;
+}
+
 /**
  * Create the main application window
  */
@@ -43,30 +198,22 @@ function createWindow() {
     height: config.WINDOW.HEIGHT,
     minWidth: config.WINDOW.MIN_WIDTH,
     minHeight: config.WINDOW.MIN_HEIGHT,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      partition: config.APP.PARTITION,
-      preload: path.join(__dirname, 'preload.js'),
-      backgroundThrottling: false // Keep media session active when window is hidden
-    },
     backgroundColor: config.WINDOW.BACKGROUND_COLOR,
     autoHideMenuBar: true,
     icon: getAssetPath('neurokaraoke.ico')
   });
 
-  // Set custom user agent
-  mainWindow.webContents.setUserAgent(config.APP.USER_AGENT);
-
   // Hide menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  // Load the site
-  mainWindow.loadURL(config.URL.SITE);
+  // Load the default site
+  switchToSite('neuro');
 
-  // Check for updates once the page has loaded (small delay so UI is visible first)
-  mainWindow.webContents.once('did-finish-load', () => {
-    setTimeout(() => checkForUpdates(mainWindow), 3000);
+  // Keep the active view filling the window on resize
+  mainWindow.on('resize', () => {
+    if (!currentView || mainWindow.isDestroyed()) return;
+    const [width, height] = mainWindow.getContentSize();
+    currentView.setBounds({ x: 0, y: 0, width, height });
   });
 
   // Minimize to tray instead of closing (only if tray is available)
@@ -86,36 +233,6 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Capture song ID from the playCount API request the Blazor app makes
-  mainWindow.webContents.session.webRequest.onCompleted(
-    { urls: ['*://api.neurokaraoke.com/api/songs/playCount/*'] },
-    (details) => {
-      if (details.method !== 'PUT') return;
-      const match = details.url.match(/\/playCount\/([0-9a-f-]{36})$/i);
-      if (match) {
-        const songId = match[1];
-        const songUrl = `https://www.neurokaraoke.com/song/${songId}`;
-        console.log('✓ Captured song ID from playCount:', songId);
-        discordManager?.updateSongUrl(songUrl);
-      }
-    }
-  );
-
-  // Block navigation away from allowed hosts
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    const isAllowed = config.URL.ALLOWED_HOSTS.some(host => url.startsWith(host));
-    if (!isAllowed) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
-  });
-
-  // Open external links in default browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-
   return mainWindow;
 }
 
@@ -127,12 +244,10 @@ function setupIpcHandlers() {
   ipcMain.on('playlist-id', async (_event, playlistId) => {
     if (playlistId !== currentPlaylistId) {
       currentPlaylistId = playlistId;
-      console.log('Playlist changed to:', playlistId);
 
       // Fetch playlist data
       try {
         await apiClient.fetchPlaylist(playlistId);
-        console.log('✓ Playlist data cached');
       } catch (error) {
         console.error('Failed to fetch playlist:', error);
       }
@@ -142,8 +257,6 @@ function setupIpcHandlers() {
   // Song info updates
   ipcMain.on('update-song', async (_event, songInfo) => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
-
-    console.log('Received song info:', songInfo);
 
     if (songInfo && songInfo.title && songInfo.title.trim()) {
       const displayTitle = songInfo.artist
@@ -157,7 +270,6 @@ function setupIpcHandlers() {
       // Fetch metadata from API if we have a playlist
       if (currentPlaylistId && apiClient) {
         try {
-          console.log('Fetching metadata for:', songInfo.title, '-', songInfo.artist || 'Unknown', 'playlist:', currentPlaylistId);
           const metadata = await apiClient.getCurrentSongMetadata(
             currentPlaylistId,
             songInfo.title,
@@ -165,8 +277,6 @@ function setupIpcHandlers() {
           );
 
           if (metadata) {
-            console.log('✓ Got metadata from API:', metadata);
-
             // Update Discord with album art + credit
             if (metadata.artCredit) {
               discordManager?.updateAlbumArtCredit(metadata.artCredit);
@@ -180,14 +290,9 @@ function setupIpcHandlers() {
               discordManager?.updateSong(songInfo.title, metadata.coverArtist);
             }
           }
-          if (!metadata) {
-            console.log('No metadata returned from API for', songInfo.title);
-          }
         } catch (error) {
           console.error('Failed to get metadata from API:', error);
         }
-      } else {
-        console.log('No playlist ID yet; skipping metadata fetch for', songInfo.title);
       }
     } else {
       mainWindow.setTitle(config.APP.NAME);
@@ -216,12 +321,52 @@ function setupIpcHandlers() {
     discordManager?.updateElapsed(elapsedSeconds);
   });
 
+  // Image right-click context menu
+  ipcMain.on('show-image-context-menu', (_event, imageUrl) => {
+    // Validate URL protocol to prevent fetching file:// or other dangerous schemes
+    try {
+      const parsed = new URL(imageUrl);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return;
+    } catch { return; }
+
+    const menu = Menu.buildFromTemplate([
+      {
+        label: 'Copy Image',
+        click: async () => {
+          try {
+            const response = await net.fetch(imageUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const image = nativeImage.createFromBuffer(Buffer.from(arrayBuffer));
+            if (!image.isEmpty()) {
+              clipboard.writeImage(image);
+            }
+          } catch (error) {
+            console.error('Failed to copy image:', error);
+          }
+        }
+      },
+      {
+        label: 'Copy Image URL',
+        click: () => {
+          clipboard.writeText(imageUrl);
+        }
+      }
+    ]);
+    menu.popup({ window: mainWindow });
+  });
+
   // Album art updates (from DOM)
   ipcMain.on('album-art', (_event, imageUrl) => {
     // Only use DOM album art if API didn't provide one
     if (imageUrl) {
-      console.log('Received album art from DOM:', imageUrl);
       discordManager?.updateAlbumArt(imageUrl);
+    }
+  });
+
+  // Site switching — from tray menu
+  ipcMain.on('switch-site', (_event, theme) => {
+    if (['neuro', 'evil', 'smocus'].includes(theme)) {
+      switchToSite(theme);
     }
   });
 }
@@ -253,11 +398,8 @@ async function initialize() {
     : 'neurokaraoke.png';
   trayManager = new TrayManager(getAssetPath(trayIconName));
   try {
-    trayManager.create(mainWindow, handleQuit);
+    trayManager.create(mainWindow, handleQuit, switchToSite);
     trayAvailable = trayManager.isAvailable();
-    if (!trayAvailable) {
-      console.warn('System tray is not available - app will quit on close');
-    }
   } catch (error) {
     console.error('Failed to create tray icon:', error);
     trayAvailable = false;
@@ -271,7 +413,6 @@ async function initialize() {
 
   // Initialize Discord RPC (non-blocking)
   discordManager = new DiscordManager(config.DISCORD_CLIENT_ID);
-  // discordManager.setCustomStatusMessage("{song} by {artist}");
   discordManager.init().catch((error) => {
     console.error('Discord RPC initialization failed:', error);
   });

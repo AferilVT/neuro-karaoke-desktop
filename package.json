@@ -1,7 +1,7 @@
 {
   "name": "neuro-karaoke-player",
   "productName": "Neuro Karaoke Player",
-  "version": "1.3.0-alpha",
+  "version": "1.4.0-alpha",
   "description": "Desktop wrapper for neurokaraoke.com with media controls and tray support",
   "homepage": "https://example.com",
   "main": "main.js",
@@ -74,6 +74,7 @@
       "menuCategory": "NeuroSama"
     },
     "linux": {
+      "artifactName": "Neuro.Karaoke.Player-${arch}.${ext}",
       "target": [
         "AppImage",
         "deb",

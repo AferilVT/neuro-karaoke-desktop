@@ -66,7 +66,12 @@ async function checkForUpdates(mainWindow) {
     });
 
     if (response === 0) {
-      shell.openExternal(release.html_url || RELEASES_PAGE);
+      const url = release.html_url || RELEASES_PAGE;
+      if (url.startsWith('https://github.com/')) {
+        shell.openExternal(url);
+      } else {
+        shell.openExternal(RELEASES_PAGE);
+      }
     }
   } catch (error) {
     // Non-critical — silently swallow network/parse errors

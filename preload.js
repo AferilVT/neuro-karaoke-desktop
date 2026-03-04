@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose API to renderer
 contextBridge.exposeInMainWorld('neuroKaraoke', {
-  version: '1.1.0'
+  version: '1.4.0-alpha'
 });
 
 /**
@@ -14,26 +14,17 @@ class SongTitleDetector {
     this.lastArtist = '';
     this.lastImageUrl = '';
     this.lastPlaylistId = null;
-    this.lastUrl = '';
     this.lastSongUrl = '';
   }
 
   detectPlaylistId() {
     // Try to get playlist ID from URL
     const url = window.location.href;
-    if (url !== this.lastUrl) {
-      this.lastUrl = url;
-    }
     const match = url.match(/\/playlist\/([a-zA-Z0-9-]+)/);
     if (match && match[1] !== this.lastPlaylistId) {
       this.lastPlaylistId = match[1];
-      console.log('✓ Detected playlist ID:', match[1]);
       return match[1];
     }
-    if (!match && url) {
-      console.log('Playlist ID not found in URL:', url);
-    }
-
     // Fallback: look for playlist links in the DOM
     const link = document.querySelector('a[href*="/playlist/"]');
     if (link) {
@@ -41,7 +32,6 @@ class SongTitleDetector {
       const linkMatch = href.match(/\/playlist\/([a-zA-Z0-9-]+)/);
       if (linkMatch && linkMatch[1] !== this.lastPlaylistId) {
         this.lastPlaylistId = linkMatch[1];
-        console.log('✓ Detected playlist ID from link:', linkMatch[1]);
         return linkMatch[1];
       }
     }
@@ -57,7 +47,6 @@ class SongTitleDetector {
         dataEl.getAttribute('playlistid');
       if (dataId && dataId !== this.lastPlaylistId) {
         this.lastPlaylistId = dataId;
-        console.log('✓ Detected playlist ID from data attribute:', dataId);
         return dataId;
       }
     }
@@ -69,7 +58,6 @@ class SongTitleDetector {
       const scriptMatch = text.match(/playlistId\"?\s*:\s*\"([a-zA-Z0-9-]+)\"/);
       if (scriptMatch && scriptMatch[1] !== this.lastPlaylistId) {
         this.lastPlaylistId = scriptMatch[1];
-        console.log('✓ Detected playlist ID from script:', scriptMatch[1]);
         return scriptMatch[1];
       }
     }
@@ -110,7 +98,6 @@ class SongTitleDetector {
         const imageUrl = img.getAttribute('src') || img.getAttribute('data-src');
         if (imageUrl && imageUrl !== this.lastImageUrl) {
           this.lastImageUrl = imageUrl;
-          console.log('✓ Detected album art:', imageUrl);
           return imageUrl;
         }
       }
@@ -227,13 +214,11 @@ class PlaybackStateDetector {
 
         // Pause icon (two vertical bars) = Song is PLAYING
         if (d.includes('M6') && d.includes('h4V5H6') && d.includes('zm8')) {
-          console.log('✓ Detected PAUSE icon - Song is PLAYING');
           return true;
         }
 
         // Play icon (triangle) = Song is PAUSED
         if (d.includes('M8 5v14l11-7') || (d.includes('M8') && d.includes('l11-7'))) {
-          console.log('⏸ Detected PLAY icon - Song is PAUSED');
           return false;
         }
       }
@@ -249,7 +234,6 @@ class PlaybackStateDetector {
       const ariaLabel = (button.getAttribute('aria-label') || '').toLowerCase();
       const isPlaying = ariaLabel.includes('pause') && !ariaLabel.includes('play');
 
-      console.log('Playback from aria-label:', isPlaying ? 'Playing' : 'Paused', '- label:', ariaLabel);
       return isPlaying;
     }
 
@@ -266,8 +250,6 @@ class SongDurationDetector {
     this.lastElapsed = null;
     this.lastProgressValue = null;
     this.progressMode = null; // 'elapsed' or 'remaining'
-    this.lastDebugAt = 0;
-    this.debugIntervalMs = 5000;
   }
 
   detectFromMedia() {
@@ -341,7 +323,6 @@ class SongDurationDetector {
     const mediaInfo = this.detectFromMedia();
     if (mediaInfo && mediaInfo.duration && mediaInfo.duration !== this.lastDuration) {
       this.lastDuration = mediaInfo.duration;
-      console.log('✓ Detected song duration from media element:', mediaInfo.duration, 'seconds');
       return mediaInfo.duration;
     }
 
@@ -349,7 +330,6 @@ class SongDurationDetector {
 
     if (durationElement) {
       const durationText = durationElement.textContent.trim();
-      console.log('Found duration element with text:', durationText);
 
       const timeMatch = durationText.match(/(\d+):(\d+)/);
       if (timeMatch) {
@@ -359,14 +339,10 @@ class SongDurationDetector {
 
         if (totalSeconds !== this.lastDuration && totalSeconds > 0) {
           this.lastDuration = totalSeconds;
-          console.log('✓ Detected song duration:', durationText, '=', totalSeconds, 'seconds');
           return totalSeconds;
         }
       }
-    } else {
-      console.log('Duration element not found');
     }
-
     return null;
   }
 
@@ -379,23 +355,19 @@ class SongDurationDetector {
       }
       if (mediaInfo.elapsed !== this.lastElapsed) {
         this.lastElapsed = mediaInfo.elapsed;
-        console.log(`✓ Detected elapsed from media element: ${mediaInfo.elapsed}s`);
         return mediaInfo.elapsed;
       }
     }
 
     if (!progressContainer) {
-      console.log('Progress container not found for elapsed time');
       return null;
     }
 
     const durationSeconds = this.lastDuration;
 
-    const slider = progressContainer.querySelector('[role="slider"], input[type="range"]');
     const sliderElapsed = this.detectElapsedFromSlider(progressContainer, durationSeconds);
     if (sliderElapsed !== null && sliderElapsed !== this.lastElapsed) {
       this.lastElapsed = sliderElapsed;
-      console.log(`✓ Detected elapsed from slider: ${sliderElapsed}s`);
       return sliderElapsed;
     }
 
@@ -403,13 +375,11 @@ class SongDurationDetector {
 
     if (times.length >= 2) {
       const durationCandidate = Math.max(...times.map((time) => time.seconds));
-      const ordered = times;
+      let progressCandidate = times[0].seconds;
+      let progressIsRemaining = times[0].negative;
 
-      let progressCandidate = ordered[0].seconds;
-      let progressIsRemaining = ordered[0].negative;
-
-      if (!progressIsRemaining && ordered.length >= 2 && ordered[1].seconds >= ordered[0].seconds) {
-        progressCandidate = ordered[0].seconds;
+      if (!progressIsRemaining && times.length >= 2 && times[1].seconds >= times[0].seconds) {
+        progressCandidate = times[0].seconds;
       } else {
         const smallest = times.reduce((min, time) => (time.seconds < min.seconds ? time : min), times[0]);
         progressCandidate = smallest.seconds;
@@ -437,37 +407,11 @@ class SongDurationDetector {
       // Always return elapsed time if it changed
       if (elapsed !== this.lastElapsed) {
         this.lastElapsed = elapsed;
-        console.log(
-          `✓ Detected elapsed: ${elapsed}s (${this.progressMode || 'elapsed?'})` +
-          `, progress=${progressCandidate}s, duration=${effectiveDuration || 'unknown'}s`
-        );
         this.lastProgressValue = progressCandidate;
         return elapsed;
       }
       this.lastProgressValue = progressCandidate;
-    } else if (times.length === 1) {
-      // Only one time found - might be just elapsed or just duration
-      console.log(`Only found one time: ${times[0].raw} (${times[0].seconds}s)`);
     }
-
-    const now = Date.now();
-    if (now - this.lastDebugAt > this.debugIntervalMs) {
-      this.lastDebugAt = now;
-      const sliderValue = slider ? (slider.getAttribute('aria-valuenow') ?? slider.value) : null;
-      const sliderMax = slider ? (slider.getAttribute('aria-valuemax') ?? slider.max) : null;
-      console.log('Elapsed debug snapshot:', {
-        durationSeconds,
-        lastElapsed: this.lastElapsed,
-        progressMode: this.progressMode,
-        progressContainerText: (progressContainer.textContent || '').trim().slice(0, 200),
-        timeTokens: times.map((time) => time.raw),
-        sliderValue,
-        sliderMax,
-        mediaElapsed: mediaInfo ? mediaInfo.elapsed : null,
-        mediaDuration: mediaInfo ? mediaInfo.duration : null
-      });
-    }
-
     return null;
   }
 
@@ -519,7 +463,6 @@ class MediaSessionManager {
 
   init() {
     if (!('mediaSession' in navigator)) {
-      console.warn('MediaSession API not supported');
       return;
     }
 
@@ -529,20 +472,16 @@ class MediaSessionManager {
       ['pause', () => this.triggerPlayPause()],
       ['previoustrack', () => this.triggerPrevious()],
       ['nexttrack', () => this.triggerNext()],
-      ['seekbackward', (details) => this.triggerSeek(-10)],
-      ['seekforward', (details) => this.triggerSeek(10)],
+      ['seekbackward', () => this.triggerSeek(-10)],
+      ['seekforward', () => this.triggerSeek(10)],
     ];
 
     for (const [action, handler] of actions) {
       try {
         navigator.mediaSession.setActionHandler(action, handler);
-        console.log(`✓ MediaSession: registered ${action} handler`);
-      } catch (error) {
-        console.warn(`MediaSession: ${action} not supported`, error);
-      }
+      } catch (_) { /* not supported on this platform */ }
     }
 
-    console.log('✓ MediaSession API initialized');
   }
 
   triggerPlayPause() {
@@ -550,14 +489,12 @@ class MediaSessionManager {
     const playBtn = document.querySelector('.play-btn');
     if (playBtn) {
       playBtn.click();
-      console.log('MediaSession: triggered play/pause');
       return;
     }
     // Fallback: toggle media element directly
     const media = document.querySelector('audio, video');
     if (media) {
       if (media.paused) media.play(); else media.pause();
-      console.log('MediaSession: toggled media element');
     }
   }
 
@@ -565,7 +502,6 @@ class MediaSessionManager {
     const playBtn = document.querySelector('.play-btn');
     if (playBtn && playBtn.nextElementSibling) {
       playBtn.nextElementSibling.click();
-      console.log('MediaSession: triggered next track');
     }
   }
 
@@ -573,7 +509,6 @@ class MediaSessionManager {
     const playBtn = document.querySelector('.play-btn');
     if (playBtn && playBtn.previousElementSibling) {
       playBtn.previousElementSibling.click();
-      console.log('MediaSession: triggered previous track');
     }
   }
 
@@ -581,7 +516,6 @@ class MediaSessionManager {
     const media = document.querySelector('audio, video');
     if (media && Number.isFinite(media.currentTime)) {
       media.currentTime = Math.max(0, media.currentTime + offsetSeconds);
-      console.log(`MediaSession: seeked ${offsetSeconds}s`);
     }
   }
 
@@ -614,7 +548,6 @@ class MediaSessionManager {
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata(metadata);
-      console.log('✓ MediaSession metadata updated:', metadata.title, '-', metadata.artist);
     } catch (error) {
       console.error('Failed to set MediaSession metadata:', error);
     }
@@ -625,7 +558,6 @@ class MediaSessionManager {
 
     this.isPlaying = playing;
     navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
-    console.log('MediaSession playback state:', playing ? 'playing' : 'paused');
   }
 
   updatePositionState(duration, position) {
@@ -662,6 +594,21 @@ class SongDetectionManager {
 
   detectAll() {
     this.bindMediaEvents();
+
+    // Skip Discord RPC detection on /quiz pages — the quiz player confuses
+    // the detectors and spams broken updates.
+    const isQuizPage = window.location.href.includes('/quiz');
+    if (isQuizPage) {
+      if (!this.quizCleared) {
+        this.quizCleared = true;
+        // Tell main process to clear Discord presence
+        ipcRenderer.send('update-song', { title: '', artist: '' });
+        ipcRenderer.send('playback-state', false);
+      }
+      return;
+    }
+    this.quizCleared = false;
+
     const songInfo = this.titleDetector.detect();
     const playbackState = this.playbackDetector.detect();
     const duration = this.durationDetector.detect();
@@ -781,7 +728,6 @@ class SongDetectionManager {
 
 // Initialize when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
-  console.log('Neuro Karaoke wrapper loaded');
 
   const manager = new SongDetectionManager();
 
@@ -848,6 +794,18 @@ window.addEventListener('DOMContentLoaded', () => {
       manager.boundMedia.removeEventListener('playing', manager.onMediaPlay);
       manager.boundMedia.removeEventListener('pause', manager.onMediaPause);
       manager.boundMedia.removeEventListener('ended', manager.onMediaPause);
+    }
+  });
+
+  // Right-click on images to copy them
+  document.addEventListener('contextmenu', (event) => {
+    const img = event.target.closest('img');
+    if (img) {
+      const src = img.src || img.getAttribute('data-src');
+      if (src && (src.startsWith('http') || src.startsWith('//'))) {
+        event.preventDefault();
+        ipcRenderer.send('show-image-context-menu', src);
+      }
     }
   });
 });
