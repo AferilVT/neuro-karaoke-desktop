@@ -5,6 +5,8 @@
 A cross-platform karaoke player for [neurokaraoke.com](https://neurokaraoke.com) — available as a desktop app (Electron) and an Android app (Jetpack Compose).
 All credits go to the website creator "Soul". These are companion apps for the website with extra features.
 
+Check [wiki](https://github.com/AferilVT/neuro-karaoke-wrapper.wiki) for API documentation
+
 ## Features
 
 ### Desktop (Electron)
