@@ -4,7 +4,14 @@ on:
   push:
     branches:
       - "**"
-  workflow_dispatch: {}
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Generate a new tag version number (e.g. v1.2.3)"
+        required: false
+        type: string
 
 jobs:
   build:
@@ -12,13 +19,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+    permissions:
+      contents: read
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: yarn
@@ -30,20 +52,142 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Build macOS
+      - name: Build
+        run: yarn build:${{ matrix.platform }} --publish=never
+      
+      - name: Zip macOS .app bundles
         if: runner.os == 'macOS'
-        run: yarn build:mac --publish=never
+        run: |
+          for app in dist/mac-*/*.app; do
+            [ -d "$app" ] || continue
+            name=$(basename "$app")
+            zip -r "dist/${name}.zip" "$app"
+          done
 
-      - name: Build Windows
-        if: runner.os == 'Windows'
-        run: yarn build:win --publish=never
-
-      - name: Build Linux
+      # Upload artifacts
+      - name: Upload Linux artifacts
         if: runner.os == 'Linux'
-        run: yarn build:linux --publish=never
-
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: dist-${{ runner.os }}
-          path: dist/**
+          name: dist-Linux-${{ matrix.arch }}
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.rpm
+          if-no-files-found: error
+
+      - name: Upload macOS artifacts
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-macOS-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/**/*.zip
+          if-no-files-found: error
+
+      - name: Upload Windows artifacts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-Windows-${{ matrix.arch }}
+          path: dist/*.exe
+          if-no-files-found: error
+
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build Android APK
+        working-directory: Android
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: |
+          set -e
+          APK_PATH=$(ls Android/app/build/outputs/apk/release/*.apk 2>/dev/null | head -n1 || true)
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found in Android/app/build/outputs/apk/release/"
+            exit 1
+          fi
+
+          mkdir -p releases
+          cp "$APK_PATH" releases/Neuro.Karaoke.Player.apk
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Neuro.Karaoke.Player.apk
+          path: releases/Neuro.Karaoke.Player.apk
+          if-no-files-found: error
+
+  draft-release:
+    needs: [build, build-android]
+    # Require a tag push or a workflow dispatch w/version input
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      attestations: write
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release/
+
+      - name: Attest all release files
+        id: attest
+        uses: actions/attest@v4
+        with:
+          subject-path: release/*
+
+      - name: Build release body
+        id: body
+        run: |
+          {
+            echo 'content<<EOF'
+            echo '## 🔏 Attestations & Checksums'
+            echo ''
+            echo 'All artifacts are signed with [build provenance attestations](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations).'
+            echo 'Verify any file locally with:'
+            echo ''
+            echo '```bash'
+            echo "gh attestation verify <file> --repo ${{ github.repository }}"
+            echo '```'
+            echo ''
+            echo '| File | SHA-256 | Attestation |'
+            echo '|------|---------|-------------|'
+            find release/ -type f | sort | while read -r f; do
+              filename=$(basename "$f")
+              sha=$(sha256sum "$f" | awk '{print $1}')
+              echo "| \`$filename\` | \`$sha\` | [View](${{ steps.attest.outputs.attestation-url }}) |"
+            done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Draft GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version || github.ref_name }}
+          name: ${{ inputs.version || github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          body: ${{ steps.body.outputs.content }}
+          files: release/**/*

@@ -74,7 +74,6 @@
       "menuCategory": "NeuroSama"
     },
     "linux": {
-      "artifactName": "Neuro.Karaoke.Player-${arch}.${ext}",
       "target": [
         "AppImage",
         "deb",
